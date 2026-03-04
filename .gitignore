@@ -1,0 +1,208 @@
+# ====================================
+# PYTHON / GENERAL
+# ====================================
+
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.nox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# ====================================
+# JUPYTER NOTEBOOKS
+# ====================================
+
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# ====================================
+# PROJECT-SPECIFIC DIRECTORIES
+# ====================================
+
+# Raw and processed data (too large, should not be on GitHub)
+data/raw/
+data/processed/
+!data/raw/.gitkeep
+!data/processed/.gitkeep
+
+# Model weights and checkpoints (very large files)
+*.pt
+*.pth
+*.bin
+*.ckpt
+checkpoints/
+saved_models/
+best_model/
+weights/
+model.pth
+
+# Research outputs (your paper materials)
+research/figures/
+research/results/
+!research/figures/.gitkeep
+!research/results/.gitkeep
+
+# ====================================
+# VIRTUAL ENVIRONMENTS
+# ====================================
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+env.bak/
+venv.bak/
+
+# Conda environments
+/opt/anaconda/
+/anaconda3/
+/miniconda/
+/miniconda3/
+
+# ====================================
+# ENVIRONMENT VARIABLES & SECRETS
+# ====================================
+
+.env
+.env.local
+.env.*.local
+.flaskenv
+
+# ====================================
+# IDE / EDITOR FILES
+# ====================================
+
+# VS Code
+.vscode/
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/settings.json
+!.vscode/tasks.json
+.history/
+
+# PyCharm
+.idea/
+*.iml
+*.iws
+*.ipr
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ====================================
+# LOGS & DATABASES
+# ====================================
+
+*.log
+*.log.*
+logs/
+*.sql
+*.sqlite
+*.db
+db.sqlite3
+
+# ====================================
+# OS GENERATED FILES
+# ====================================
+
+# macOS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Windows
+*.cab
+*.msi
+*.msm
+*.msp
+*.lnk
+
+# ====================================
+# JUPYTER / NOTEBOOK ARTIFACTS
+# ====================================
+
+# Exclude notebooks with outputs (if you want clean notebooks)
+# *.ipynb
+# !*.ipynb  # Uncomment if you want to keep notebooks but not outputs
+
+# ====================================
+# VISUALIZATION CACHE
+# ====================================
+
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.svg
+# Uncomment below if you want to keep only specific figures
+# !research/figures/*.png
+
+# ====================================
+# TENSORBOARD LOGS
+# ====================================
+
+runs/
+tensorboard/
+lightning_logs/
+
+# ====================================
+# TEMPORARY FILES
+# ====================================
+
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+.DS_Store
+
+# ====================================
+# PACKAGE LOCK FILES (optional)
+# ====================================
+
+# You can choose to commit or ignore these
+# poetry.lock
+# Pipfile.lock
