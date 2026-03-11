@@ -195,3 +195,66 @@ if __name__ == "__main__":
     
     # Save
     loader.save_processed_data()
+
+    def _prepare_uploaded_df(self, df, text_col=None, rating_col=None, date_col=None):
+    """
+    Maps any uploaded CSV columns to the internal format
+    the pipeline expects: review_text, rating, review_date
+    """
+    result = df.copy()
+
+    # ── Auto-detect text column ──────────────────────────────
+    text_candidates = ['reviewText', 'review_text', 'review_body',
+                       'text', 'comment', 'description', 'content', 'Review']
+    if text_col:
+        result['review_text'] = result[text_col]
+    else:
+        for col in text_candidates:
+            if col in result.columns:
+                result['review_text'] = result[col]
+                break
+        else:
+            # Use first string column as fallback
+            str_cols = result.select_dtypes(include='object').columns
+            if len(str_cols) > 0:
+                result['review_text'] = result[str_cols[0]]
+            else:
+                raise ValueError("Could not find a text column in your CSV")
+
+    # ── Auto-detect rating column ────────────────────────────
+    rating_candidates = ['overall', 'rating', 'star_rating', 'stars',
+                         'score', 'Rating', 'review_score']
+    if rating_col:
+        result['rating'] = pd.to_numeric(result[rating_col], errors='coerce').fillna(3)
+    else:
+        for col in rating_candidates:
+            if col in result.columns:
+                result['rating'] = pd.to_numeric(result[col], errors='coerce').fillna(3)
+                break
+        else:
+            result['rating'] = 3  # Default neutral rating
+
+    # ── Auto-detect date column ──────────────────────────────
+    date_candidates = ['reviewTime', 'review_date', 'date', 'Date',
+                       'review_time', 'created_at', 'timestamp']
+    if date_col:
+        result['review_date'] = pd.to_datetime(result[date_col], errors='coerce')
+    else:
+        for col in date_candidates:
+            if col in result.columns:
+                result['review_date'] = pd.to_datetime(result[col], errors='coerce')
+                break
+        else:
+            # No date found — assign fake sequential dates
+            import numpy as np
+            base = pd.Timestamp('2020-01-01')
+            result['review_date'] = [base + pd.Timedelta(days=i % 365)
+                                     for i in range(len(result))]
+
+    # ── Drop rows with no review text ────────────────────────
+    result = result.dropna(subset=['review_text'])
+    result['review_text'] = result['review_text'].astype(str)
+
+    print(f"   [DataLoader] Prepared {len(result)} rows from uploaded CSV")
+    print(f"   Columns mapped: review_text, rating, review_date")
+    return result
