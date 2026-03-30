@@ -1,257 +1,215 @@
 """
 File: aspect_based_analyzer.py
-Purpose: Extract WHAT features customers talk about using dynamic domain detection
+Purpose: Extract WHAT features customers talk about using domain-aware keyword matching
+FIXED: Uses exclusive domain signals with regex word-boundary matching to prevent
+       misclassifying electronics reviews as food/restaurant domain.
 """
 
 import pandas as pd
 import re
 from collections import Counter
-from sklearn.feature_extraction.text import TfidfVectorizer
 import numpy as np
+import os
+import json
 
 class AspectAnalyzer:
     def __init__(self):
-        # Domain-specific keyword dictionaries
+        # Domain-specific aspect keyword dictionaries
         self.domain_keywords = {
             'electronics': {
-                'battery': ['battery', 'charge', 'charging', 'power', 'backup', 'lasts'],
-                'screen': ['screen', 'display', 'resolution', 'brightness', 'clear'],
-                'camera': ['camera', 'photo', 'picture', 'video', 'selfie', 'lens'],
-                'performance': ['speed', 'fast', 'slow', 'lag', 'performance', 'quick'],
-                'design': ['design', 'look', 'style', 'build', 'material', 'sleek'],
-                'price': ['price', 'cost', 'expensive', 'cheap', 'value', 'money', 'worth'],
-                'software': ['software', 'update', 'app', 'interface', 'os', 'bug', 'crash']
+                'battery':     ['battery', 'charging', 'charge', 'power backup', 'battery life', 'dies fast'],
+                'screen':      ['screen', 'display', 'resolution', 'brightness', 'backlight', 'lcd', 'oled'],
+                'camera':      ['camera', 'photo', 'picture quality', 'video', 'selfie', 'lens', 'megapixel'],
+                'performance': ['performance', 'speed', 'processor', 'lag', 'fast', 'slow', 'heating', 'benchmark'],
+                'design':      ['design', 'build quality', 'material', 'sleek', 'premium', 'plastic', 'metal'],
+                'price':       ['price', 'cost', 'expensive', 'cheap', 'value', 'worth', 'overpriced'],
+                'software':    ['software', 'app', 'update', 'interface', 'os', 'bug', 'crash'],
             },
-            'restaurant_food': {
-                'food_quality': ['delicious', 'tasty', 'fresh', 'flavor', 'seasoning', 'cooked', 'quality'],
-                'service': ['service', 'staff', 'waiter', 'friendly', 'rude', 'helpful', 'slow'],
-                'delivery': ['delivery', 'arrived', 'packaging', 'warm', 'cold', 'time', 'quick'],
-                'portion': ['portion', 'size', 'generous', 'small', 'tiny', 'huge', 'amount'],
-                'price': ['price', 'cost', 'expensive', 'cheap', 'value', 'money', 'worth', 'overpriced'],
-                'hygiene': ['hygiene', 'clean', 'dirty', 'hair', 'spill', 'packaging'],
-                'menu': ['menu', 'options', 'variety', 'choices', 'selection', 'limited']
+            'food': {
+                'food_quality':['taste', 'flavor', 'delicious', 'bland', 'spicy', 'fresh', 'authentic', 'cooked'],
+                'service':     ['service', 'staff', 'waiter', 'rude', 'friendly', 'attentive'],
+                'delivery':    ['delivery', 'arrived', 'packaging', 'warm', 'cold food', 'on time', 'delivered'],
+                'portion':     ['portion', 'quantity', 'generous', 'small portion', 'filling', 'amount'],
+                'price':       ['price', 'expensive', 'cheap', 'value', 'overpriced', 'affordable'],
+                'hygiene':     ['hygiene', 'clean', 'dirty', 'hair in food', 'contaminated', 'food safety'],
+                'menu':        ['menu', 'variety', 'options', 'vegan', 'gluten free', 'selection'],
             },
-            'general': {
-                'quality': ['quality', 'good', 'bad', 'excellent', 'poor', 'great', 'terrible'],
-                'value': ['value', 'worth', 'money', 'price', 'cost', 'expensive', 'cheap'],
-                'experience': ['experience', 'happy', 'disappointed', 'satisfied', 'frustrated'],
-                'recommendation': ['recommend', 'suggest', 'advice', 'warning', 'avoid'],
-                'expectations': ['expectation', 'expected', 'surprised', 'disappointed', 'exceeded']
+            'fashion': {
+                'quality':     ['fabric', 'material', 'stitching', 'durable', 'cloth quality'],
+                'fit':         ['fit', 'size', 'tight', 'loose', 'true to size', 'runs small'],
+                'style':       ['style', 'color', 'pattern', 'looks', 'fashionable', 'trendy'],
+                'price':       ['price', 'expensive', 'affordable', 'value', 'worth'],
+                'delivery':    ['delivery', 'shipping', 'arrived', 'packaging'],
+                'comfort':     ['comfort', 'comfortable', 'itchy', 'soft', 'breathable'],
+            },
+            'hotel': {
+                'cleanliness': ['clean', 'dirty', 'hygiene', 'spotless', 'housekeeping'],
+                'service':     ['service', 'staff', 'reception', 'helpful', 'rude', 'check in'],
+                'location':    ['location', 'central', 'nearby', 'transport', 'convenient'],
+                'room':        ['room', 'bed', 'bathroom', 'shower', 'amenities', 'view'],
+                'price':       ['price', 'expensive', 'value', 'worth', 'affordable'],
+                'food':        ['breakfast', 'restaurant', 'meal', 'buffet', 'dining'],
+            },
+            'generic': {
+                'quality':     ['quality', 'excellent', 'poor', 'great', 'terrible'],
+                'price':       ['price', 'expensive', 'cheap', 'value', 'worth'],
+                'service':     ['service', 'support', 'helpful', 'rude', 'response'],
+                'delivery':    ['delivery', 'shipping', 'arrived', 'late', 'fast'],
+                'experience':  ['experience', 'recommend', 'satisfied', 'disappointed'],
+                'performance': ['performance', 'efficient', 'reliable', 'works well'],
+                'design':      ['design', 'look', 'style', 'appearance', 'build'],
             }
         }
-    
+
+        # EXCLUSIVE domain signal words — unique to each domain
+        # These are scored with word-boundary regex to avoid partial matches
+        self.domain_signals = {
+            'electronics': [
+                'battery', 'charger', 'screen', 'display', 'camera', 'processor',
+                'phone', 'smartphone', 'laptop', 'tablet', 'device', 'bluetooth',
+                'charging', 'software', 'app', 'pixel', 'ram', 'storage',
+                'speaker', 'headphone', 'keyboard', 'touchscreen', 'resolution',
+                'microphone', 'operating system', 'update', 'firmware'
+            ],
+            'food': [
+                'restaurant', 'meal', 'cuisine', 'dish', 'recipe', 'ingredient',
+                'chef', 'waiter', 'menu', 'takeaway', 'delivery order', 'dine',
+                'burger', 'pizza', 'pasta', 'sushi', 'curry', 'sandwich',
+                'portion', 'flavor', 'delicious', 'tasteless', 'overcooked',
+                'food arrived', 'food quality', 'order delivered'
+            ],
+            'fashion': [
+                'fabric', 'cloth', 'outfit', 'dress', 'shirt', 'jeans',
+                'fitting', 'size chart', 'wardrobe', 'apparel', 'wear',
+                'cotton', 'polyester', 'stitching', 'hemline'
+            ],
+            'hotel': [
+                'hotel', 'resort', 'checkin', 'checkout', 'reception',
+                'housekeeping', 'concierge', 'amenity', 'pool', 'spa',
+                'room service', 'breakfast buffet', 'front desk'
+            ]
+        }
+
     def detect_domain(self, texts):
-        """Automatically detect the domain based on text content"""
-        sample_text = ' '.join(texts[:100]).lower()
-        
-        # Count domain-specific keywords
+        """
+        Detect domain using exclusive signal word counting with word-boundary matching.
+        Returns domain string or 'generic' if confidence is low.
+        """
+        sample_text = ' '.join(str(t).lower() for t in texts[:200])
         scores = {}
-        for domain, aspects in self.domain_keywords.items():
+
+        for domain, signals in self.domain_signals.items():
             score = 0
-            for aspect_words in aspects.values():
-                for word in aspect_words:
-                    score += sample_text.count(word)
+            for signal in signals:
+                # Word-boundary regex — prevents 'taste' matching 'distaste', etc.
+                pattern = r'\b' + re.escape(signal) + r'\b'
+                count = len(re.findall(pattern, sample_text))
+                score += count
             scores[domain] = score
-        
-        # Return domain with highest score, default to general
-        detected = max(scores, key=scores.get)
-        return detected if scores[detected] > 5 else 'general'
-    
-    def extract_aspects(self, text, domain='general'):
-        """Extract product aspects mentioned in text"""
+
+        print(f"   [Domain Detection] Raw scores: {scores}")
+
+        best_domain = max(scores, key=scores.get)
+        best_score = scores[best_domain]
+
+        # Need minimum evidence
+        if best_score < 3:
+            print(f"   [Domain Detection] Insufficient evidence — defaulting to generic")
+            return 'generic'
+
+        # Check dominance over second-best
+        sorted_scores = sorted(scores.values(), reverse=True)
+        if len(sorted_scores) > 1 and sorted_scores[1] > 0:
+            ratio = sorted_scores[0] / sorted_scores[1]
+            if ratio < 1.5:
+                print(f"   [Domain Detection] Ambiguous (ratio={ratio:.2f}) — using generic")
+                return 'generic'
+
+        print(f"   [Domain Detection] ✅ Detected: {best_domain} (score={best_score})")
+        return best_domain
+
+    def extract_aspects(self, text, aspect_keywords):
+        """Extract aspects from a single review using keyword matching"""
         aspects_found = []
         text_lower = str(text).lower()
-        
-        # Use domain-specific keywords
-        keywords_dict = self.domain_keywords.get(domain, self.domain_keywords['general'])
-        
-        for aspect, keywords in keywords_dict.items():
+        for aspect, keywords in aspect_keywords.items():
             for keyword in keywords:
                 if keyword in text_lower:
                     aspects_found.append(aspect)
                     break
-        
         return list(set(aspects_found))
-    
-    def extract_dynamic_aspects(self, texts, top_n=8):
-        """Dynamically extract aspects using TF-IDF for unknown domains"""
-        try:
-            # Use TF-IDF to find important terms
-            vectorizer = TfidfVectorizer(
-                max_features=100,
-                stop_words='english',
-                ngram_range=(1, 2),
-                min_df=2
-            )
-            
-            tfidf_matrix = vectorizer.fit_transform(texts)
-            feature_names = vectorizer.get_feature_names_out()
-            
-            # Get average TF-IDF scores
-            scores = np.mean(tfidf_matrix.toarray(), axis=0)
-            top_indices = scores.argsort()[-top_n:][::-1]
-            
-            dynamic_aspects = {}
-            for idx in top_indices:
-                term = feature_names[idx]
-                # Group similar terms (simple approach)
-                category = self._categorize_term(term)
-                if category not in dynamic_aspects:
-                    dynamic_aspects[category] = []
-                dynamic_aspects[category].append(term)
-            
-            return dynamic_aspects
-            
-        except Exception as e:
-            print(f"   ⚠️ Dynamic aspect extraction failed: {e}")
-            return {}
-    
-    def _categorize_term(self, term):
-        """Simple categorization of terms"""
-        food_terms = ['food', 'meal', 'dish', 'cuisine', 'taste', 'flavor']
-        service_terms = ['service', 'delivery', 'staff', 'support', 'help']
-        quality_terms = ['quality', 'good', 'bad', 'excellent', 'poor']
-        
-        if any(t in term for t in food_terms):
-            return 'food_quality'
-        elif any(t in term for t in service_terms):
-            return 'service'
-        elif any(t in term for t in quality_terms):
-            return 'quality'
-        else:
-            return 'general'
-    
+
     def analyze_reviews(self, reviews_df):
-        """Analyze aspects across all reviews with automatic domain detection"""
+        """Main method: detect domain, pick keywords, extract aspects from all reviews"""
         print("\n🔍 Performing Aspect-Based Sentiment Analysis...")
-        
-        # Detect domain automatically
+
         texts = reviews_df['review_text'].tolist()
         domain = self.detect_domain(texts)
-        print(f"   Detected domain: {domain.upper()}")
-        
+        print(f"   Using keyword set for domain: {domain.upper()}")
+
+        aspect_keywords = self.domain_keywords.get(domain, self.domain_keywords['generic'])
         results = []
-        
+
         for idx, row in reviews_df.iterrows():
             text = str(row['review_text'])
-            aspects = self.extract_aspects(text, domain)
-            
-            # Get sentiment for this review
+            aspects = self.extract_aspects(text, aspect_keywords)
             sentiment = row.get('sentiment_label', 'NEUTRAL')
             sentiment_score = float(row.get('sentiment_score', 0.5))
-            
+
             for aspect in aspects:
                 results.append({
-                    'review_id': int(idx),
-                    'aspect': aspect,
-                    'sentiment': sentiment,
+                    'review_id':       int(idx),
+                    'aspect':          aspect,
+                    'domain':          domain,
+                    'sentiment':       sentiment,
                     'sentiment_score': sentiment_score,
-                    'text_snippet': text[:100] + '...' if len(text) > 100 else text
+                    'text_snippet':    text[:100] + '...' if len(text) > 100 else text
                 })
-        
+
         aspect_df = pd.DataFrame(results)
-        
-        # If no aspects found, try dynamic extraction
-        if len(aspect_df) == 0:
-            print("   No standard aspects found. Trying dynamic extraction...")
-            dynamic_aspects = self.extract_dynamic_aspects(texts)
-            print(f"   Dynamic aspects found: {list(dynamic_aspects.keys())}")
-        
-        # Generate insights
         self.generate_aspect_insights(aspect_df, domain)
-        
         return aspect_df
-    
-    def generate_aspect_insights(self, aspect_df, domain='general'):
-        """Generate business insights from aspect analysis"""
+
+    def generate_aspect_insights(self, aspect_df, domain='generic'):
+        """Print summary and save JSON insights"""
         print("\n📊 ASPECT ANALYSIS RESULTS:")
-        print("="*50)
-        
+        print("=" * 50)
+
+        os.makedirs('research/results', exist_ok=True)
+
         if len(aspect_df) == 0:
             print("No aspects found in reviews")
-            # Create empty results file
-            import json
-            os.makedirs('research/results', exist_ok=True)
             with open('research/results/aspect_insights.json', 'w') as f:
-                json.dump({
-                    'total_aspect_mentions': 0,
-                    'unique_aspects_found': 0,
-                    'domain': domain,
-                    'note': 'No specific aspects detected - using general sentiment only'
-                }, f, indent=4)
+                json.dump({'total_aspect_mentions': 0, 'domain': domain,
+                           'note': 'No aspects detected'}, f, indent=4)
             return
-        
-        # 1. Most discussed aspects
+
         aspect_counts = aspect_df['aspect'].value_counts()
+        print(f"\n   Domain: {domain.upper()}")
+        print(f"   Total mentions: {len(aspect_df)}")
         print("\nTOP DISCUSSED FEATURES:")
         for aspect, count in aspect_counts.head(5).items():
-            print(f"  • {aspect.upper()}: {int(count)} mentions")
-        
-        # 2. Sentiment by aspect
-        print("\nSENTIMENT BY FEATURE (Positive %):")
-        for aspect in aspect_counts.index[:5]:
-            aspect_data = aspect_df[aspect_df['aspect'] == aspect]
-            if len(aspect_data) > 0:
-                positive_pct = (aspect_data['sentiment'] == 'POSITIVE').sum() / len(aspect_data) * 100
-                print(f"  • {aspect.upper()}: {positive_pct:.1f}% positive")
-        
-        # 3. Problem areas
-        print("\n⚠️ POTENTIAL PROBLEM AREAS:")
-        problem_found = False
-        for aspect in aspect_counts.index:
-            aspect_data = aspect_df[aspect_df['aspect'] == aspect]
-            if len(aspect_data) > 3:  # Lowered threshold
-                negative_pct = (aspect_data['sentiment'] == 'NEGATIVE').sum() / len(aspect_data) * 100
-                if negative_pct > 40:
-                    print(f"  • {aspect.upper()}: {negative_pct:.1f}% negative reviews")
-                    problem_found = True
-        
-        if not problem_found:
-            print("  • No major problem areas detected")
-        
-        # Save insights
-        import json
-        import os
-        os.makedirs('research/results', exist_ok=True)
-        
+            adf = aspect_df[aspect_df['aspect'] == aspect]
+            pos_pct = (adf['sentiment'] == 'POSITIVE').sum() / len(adf) * 100
+            print(f"  • {aspect.upper()}: {int(count)} mentions ({pos_pct:.1f}% positive)")
+
         insights = {
+            'domain_detected':       domain,
             'total_aspect_mentions': int(len(aspect_df)),
-            'unique_aspects_found': int(len(aspect_counts)),
-            'domain': domain,
-            'top_aspect': str(aspect_counts.index[0]) if len(aspect_counts) > 0 else None,
-            'top_aspect_count': int(aspect_counts.iloc[0]) if len(aspect_counts) > 0 else 0,
-            'aspect_summary': {}
+            'unique_aspects_found':  int(len(aspect_counts)),
+            'top_aspect':            str(aspect_counts.index[0]) if len(aspect_counts) > 0 else None,
+            'aspect_summary':        {}
         }
-        
-        for aspect in aspect_counts.index[:5]:
-            aspect_data = aspect_df[aspect_df['aspect'] == aspect]
-            if len(aspect_data) > 0:
-                positive_pct = float((aspect_data['sentiment'] == 'POSITIVE').sum() / len(aspect_data) * 100)
+
+        for aspect in aspect_counts.index[:7]:
+            adf = aspect_df[aspect_df['aspect'] == aspect]
+            if len(adf) > 0:
+                pos_pct = float((adf['sentiment'] == 'POSITIVE').sum() / len(adf) * 100)
                 insights['aspect_summary'][aspect] = {
-                    'mentions': int(aspect_counts[aspect]),
-                    'positive_percentage': round(positive_pct, 1)
+                    'mentions':            int(aspect_counts[aspect]),
+                    'positive_percentage': round(pos_pct, 1)
                 }
-        
+
         with open('research/results/aspect_insights.json', 'w') as f:
             json.dump(insights, f, indent=4, default=str)
-        
-        print(f"\n💾 Aspect insights saved to research/results/aspect_insights.json")
-
-# For testing
-if __name__ == "__main__":
-    # Test with sample data
-    import pandas as pd
-    
-    test_data = pd.DataFrame({
-        'review_text': [
-            "Food was delicious but delivery was slow",
-            "Great service and amazing taste",
-            "Portion size too small for the price"
-        ],
-        'sentiment_label': ['POSITIVE', 'POSITIVE', 'NEGATIVE'],
-        'sentiment_score': [0.8, 0.9, 0.3]
-    })
-    
-    analyzer = AspectAnalyzer()
-    result = analyzer.analyze_reviews(test_data)
-    print(f"\nFound {len(result)} aspect mentions")
+        print(f"\n💾 Saved to research/results/aspect_insights.json")
