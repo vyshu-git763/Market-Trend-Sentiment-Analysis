@@ -44,7 +44,6 @@ class DataLoader:
                 df['review_date'] = pd.to_datetime(df['unix_time'], unit='s')
                 df = df.drop('unix_time', axis=1)
             else:
-                # Create sample dates if no time column
                 df['review_date'] = pd.date_range(
                     start='2023-01-01', 
                     periods=len(df),
@@ -57,8 +56,25 @@ class DataLoader:
             # Remove empty reviews
             df = df[df['review_text'].str.strip() != '']
             
-            # Add category (Electronics for all)
+            # Add category
             df['category'] = 'Electronics'
+
+            # ── THREE-CLASS rating sentiment (FIXED) ──────────
+            # Previously: rating <= 3.5 → all NEGATIVE (wrong)
+            # Now: 4-5 = POSITIVE, 3 = NEUTRAL, 1-2 = NEGATIVE
+            def rating_to_sentiment(r):
+                if r >= 4:
+                    return 'POSITIVE'
+                elif r == 3:
+                    return 'NEUTRAL'
+                else:
+                    return 'NEGATIVE'
+
+            df['rating_sentiment'] = df['rating'].apply(rating_to_sentiment)
+            # numeric version for accuracy calculation
+            df['rating_numeric'] = df['rating'].apply(
+                lambda x: 1 if x >= 4 else (0 if x == 3 else -1)
+            )
             
             print(f"   ✅ Cleaned: {len(df):,} reviews")
             print(f"   Date range: {df['review_date'].min().date()} to {df['review_date'].max().date()}")
@@ -95,7 +111,9 @@ class DataLoader:
                 'rating': rating,
                 'product_id': f'PROD{np.random.randint(1000, 9999)}',
                 'review_date': pd.Timestamp('2023-01-01') + pd.Timedelta(days=np.random.randint(0, 365)),
-                'category': 'Electronics'
+                'category': 'Electronics',
+                'rating_sentiment': 'POSITIVE' if rating >= 4 else ('NEUTRAL' if rating == 3 else 'NEGATIVE'),
+                'rating_numeric': 1 if rating >= 4 else (0 if rating == 3 else -1)
             })
         
         df = pd.DataFrame(data)
@@ -103,29 +121,23 @@ class DataLoader:
         return df
     
     def generate_market_data(self):
-        """
-        Generate simulated stock market data matching sentiment dates
-        """
+        """Generate simulated stock market data matching sentiment dates"""
         print("\n📊 Generating market data...")
         
-        # Match sentiment data date range (2000-2012)
         dates = pd.date_range(start='2000-01-01', end='2012-12-31', freq='D')
         
-        # Simulate stock prices (random walk)
         np.random.seed(42)
         prices = [100]
         for i in range(1, len(dates)):
             change = np.random.normal(0.001, 0.015)
             prices.append(prices[-1] * (1 + change))
         
-        # Create DataFrame
         df = pd.DataFrame({
             'date': dates,
             'stock_price': prices,
             'volume': np.random.randint(1000000, 5000000, len(dates))
         })
         
-        # Add price changes
         df['price_change_pct'] = df['stock_price'].pct_change() * 100
         
         print(f"   ✅ Generated {len(df)} days of market data")
@@ -142,14 +154,12 @@ class DataLoader:
             print("   ❌ No data to align")
             return None
         
-        # Get review date range
         review_min_date = self.reviews_df['review_date'].min()
         review_max_date = self.reviews_df['review_date'].max()
         
         print(f"   Review date range: {review_min_date.date()} to {review_max_date.date()}")
         print(f"   Market date range: {self.market_df['date'].min().date()} to {self.market_df['date'].max().date()}")
         
-        # Filter market data to match review dates
         aligned_market = self.market_df[
             (self.market_df['date'] >= review_min_date) & 
             (self.market_df['date'] <= review_max_date)
@@ -160,7 +170,6 @@ class DataLoader:
             aligned_market = self.market_df.copy()
         
         print(f"   ✅ Aligned market data: {len(aligned_market)} days")
-        
         return aligned_market
     
     def save_processed_data(self):
@@ -175,86 +184,97 @@ class DataLoader:
             self.market_df.to_csv('data/processed/market_data.csv', index=False)
             print("   💾 Saved market data to data/processed/market_data.csv")
             
-            # Also save aligned version
             aligned = self.align_dates_with_reviews()
             if aligned is not None:
                 aligned.to_csv('data/processed/market_data_aligned.csv', index=False)
                 print("   💾 Saved aligned market data to data/processed/market_data_aligned.csv")
 
-# Test the data loader
+    def _prepare_uploaded_df(self, df, text_col=None, rating_col=None, date_col=None):
+        """
+        Maps any uploaded CSV columns to internal format.
+        Accepts optional column name hints from the frontend mapping screen.
+        """
+        result = df.copy()
+
+        # ── Auto-detect text column ──────────────────────────
+        text_candidates = ['reviewText', 'review_text', 'review_body',
+                           'text', 'comment', 'description', 'content', 'Review', 'Text']
+        if text_col and text_col in result.columns:
+            result['review_text'] = result[text_col]
+        else:
+            for col in text_candidates:
+                if col in result.columns:
+                    result['review_text'] = result[col]
+                    break
+            else:
+                str_cols = result.select_dtypes(include='object').columns
+                if len(str_cols) > 0:
+                    result['review_text'] = result[str_cols[0]]
+                else:
+                    raise ValueError("Could not find a text column in your CSV")
+
+        # ── Auto-detect rating column ────────────────────────
+        rating_candidates = ['overall', 'rating', 'star_rating', 'stars',
+                             'score', 'Rating', 'review_score', 'Score']
+        if rating_col and rating_col in result.columns:
+            result['rating'] = pd.to_numeric(result[rating_col], errors='coerce').fillna(3)
+        else:
+            for col in rating_candidates:
+                if col in result.columns:
+                    result['rating'] = pd.to_numeric(result[col], errors='coerce').fillna(3)
+                    break
+            else:
+                result['rating'] = 3  # Default neutral rating
+
+        # ── Auto-detect date column ──────────────────────────
+        date_candidates = ['reviewTime', 'review_date', 'date', 'Date',
+                           'review_time', 'created_at', 'timestamp', 'Time']
+        if date_col and date_col in result.columns:
+            result['review_date'] = pd.to_datetime(result[date_col], errors='coerce')
+        else:
+            for col in date_candidates:
+                if col in result.columns:
+                    result['review_date'] = pd.to_datetime(result[col], errors='coerce')
+                    break
+            else:
+                # No date found — assign sequential dates from today
+                base = pd.Timestamp('2020-01-01')
+                result['review_date'] = [
+                    base + pd.Timedelta(days=i % 365)
+                    for i in range(len(result))
+                ]
+
+        # ── THREE-CLASS rating sentiment (FIXED) ────────────
+        def rating_to_sentiment(r):
+            if r >= 4:
+                return 'POSITIVE'
+            elif r == 3:
+                return 'NEUTRAL'
+            else:
+                return 'NEGATIVE'
+
+        result['rating_sentiment'] = result['rating'].apply(rating_to_sentiment)
+        result['rating_numeric'] = result['rating'].apply(
+            lambda x: 1 if x >= 4 else (0 if x == 3 else -1)
+        )
+
+        # ── Clean up ─────────────────────────────────────────
+        result = result.dropna(subset=['review_text'])
+        result['review_text'] = result['review_text'].astype(str)
+        result = result[result['review_text'].str.strip() != '']
+
+        print(f"   [DataLoader] Prepared {len(result)} rows from uploaded CSV")
+        print(f"   Text col: {text_col or 'auto-detected'}")
+        print(f"   Rating col: {rating_col or 'auto-detected'}")
+        print(f"   Date col: {date_col or 'auto-detected'}")
+        return result
+
+
+# ── Test ──────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     loader = DataLoader()
-    
-    # Test loading
     reviews = loader.load_reviews(sample_size=5000)
     print(f"\nSample of loaded data:")
-    print(reviews[['review_text', 'rating', 'review_date']].head(3))
-    
-    # Test market data
+    print(reviews[['review_text', 'rating', 'rating_sentiment', 'review_date']].head(3))
     market = loader.generate_market_data()
-    
-    # Save
     loader.save_processed_data()
-
-    def _prepare_uploaded_df(self, df, text_col=None, rating_col=None, date_col=None):
-    """
-    Maps any uploaded CSV columns to the internal format
-    the pipeline expects: review_text, rating, review_date
-    """
-    result = df.copy()
-
-    # ── Auto-detect text column ──────────────────────────────
-    text_candidates = ['reviewText', 'review_text', 'review_body',
-                       'text', 'comment', 'description', 'content', 'Review']
-    if text_col:
-        result['review_text'] = result[text_col]
-    else:
-        for col in text_candidates:
-            if col in result.columns:
-                result['review_text'] = result[col]
-                break
-        else:
-            # Use first string column as fallback
-            str_cols = result.select_dtypes(include='object').columns
-            if len(str_cols) > 0:
-                result['review_text'] = result[str_cols[0]]
-            else:
-                raise ValueError("Could not find a text column in your CSV")
-
-    # ── Auto-detect rating column ────────────────────────────
-    rating_candidates = ['overall', 'rating', 'star_rating', 'stars',
-                         'score', 'Rating', 'review_score']
-    if rating_col:
-        result['rating'] = pd.to_numeric(result[rating_col], errors='coerce').fillna(3)
-    else:
-        for col in rating_candidates:
-            if col in result.columns:
-                result['rating'] = pd.to_numeric(result[col], errors='coerce').fillna(3)
-                break
-        else:
-            result['rating'] = 3  # Default neutral rating
-
-    # ── Auto-detect date column ──────────────────────────────
-    date_candidates = ['reviewTime', 'review_date', 'date', 'Date',
-                       'review_time', 'created_at', 'timestamp']
-    if date_col:
-        result['review_date'] = pd.to_datetime(result[date_col], errors='coerce')
-    else:
-        for col in date_candidates:
-            if col in result.columns:
-                result['review_date'] = pd.to_datetime(result[col], errors='coerce')
-                break
-        else:
-            # No date found — assign fake sequential dates
-            import numpy as np
-            base = pd.Timestamp('2020-01-01')
-            result['review_date'] = [base + pd.Timedelta(days=i % 365)
-                                     for i in range(len(result))]
-
-    # ── Drop rows with no review text ────────────────────────
-    result = result.dropna(subset=['review_text'])
-    result['review_text'] = result['review_text'].astype(str)
-
-    print(f"   [DataLoader] Prepared {len(result)} rows from uploaded CSV")
-    print(f"   Columns mapped: review_text, rating, review_date")
-    return result

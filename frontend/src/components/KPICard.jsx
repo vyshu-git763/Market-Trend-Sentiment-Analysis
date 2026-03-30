@@ -22,17 +22,6 @@ function Counter({ value, suffix = '', decimals = 0 }) {
   return <>{decimals > 0 ? display.toFixed(decimals) : Math.floor(display)}{suffix}</>;
 }
 
-// ─── KPI CARD ─────────────────────────────────────────────────────────────────
-// Props:
-//   label   - string  e.g. "Total Reviews"
-//   value   - number  e.g. 1000
-//   suffix  - string  e.g. "%" or ""
-//   decimals- number  e.g. 1 for 79.6%
-//   color   - hex     e.g. "#00d4aa"
-//   icon    - string  e.g. "◎"
-//   desc    - string  e.g. "Amazon Electronics"
-//   variant - 'top' | 'left'  (which side the color bar appears)
-
 export default function KPICard({ label, value, suffix = '', decimals = 0, color = '#00d4aa', icon = '◈', desc = '', variant = 'top' }) {
   const borderStyle = variant === 'left'
     ? { borderLeft: `3px solid ${color}` }
@@ -82,7 +71,6 @@ export default function KPICard({ label, value, suffix = '', decimals = 0, color
           {desc}
         </div>
       )}
-      {/* Decorative bottom-right accent */}
       <div style={{
         position:     'absolute',
         bottom:       0,

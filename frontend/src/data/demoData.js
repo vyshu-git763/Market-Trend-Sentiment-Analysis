@@ -4,19 +4,28 @@
 
 export const demoData = {
   kpi: {
-    totalReviews:  1000,
-    accuracy:      79.6,
-    positivePct:   70.7,
-    negativePct:   29.3,
-    sentimentDays: 729,
-    avgConfidence: 97.4,
-    avgRating:     4.15,
+  totalReviews:  1000,
+  accuracy:      79.6,
+  positivePct:   70.7,
+  negativePct:   21.8,    
+  neutralPct:    7.5,    
+  sentimentDays: 729,
+  avgConfidence: 97.4,
+  avgRating:     4.15,
+},
+ // ADD THIS SECTION:
+  modelMetrics: {
+    precision: 79.6,
+    recall: 78.2,
+    f1_score: 78.9,
+    accuracy: 79.6,
+    note: "Compared against user star ratings (1-2★=Negative, 3★=Neutral, 4-5★=Positive)"
   },
 
   sentiment: {
     positive: 707,
-    negative: 293,
-    neutral:  0,
+    negative: 218,
+    neutral:  75,
   },
 
   aspects: [
@@ -104,7 +113,7 @@ export const demoData = {
     { date: '2011-06-22', rating: 4, text: 'Great value for money, camera is decent and battery lasts all day. Highly recommend.', sentiment: 'POSITIVE', confidence: 94.7 },
     { date: '2008-01-15', rating: 1, text: 'Terrible software experience. Price is way too high for this quality.', sentiment: 'NEGATIVE', confidence: 97.2 },
     { date: '2012-09-30', rating: 5, text: 'Outstanding performance and beautiful design. Highly recommend to anyone!', sentiment: 'POSITIVE', confidence: 99.5 },
-    { date: '2007-07-08', rating: 3, text: 'Okay device. Screen is average and charging is slow but it gets the job done.', sentiment: 'NEGATIVE', confidence: 81.3 },
+    { date: '2007-07-08', rating: 3, text: 'Okay device. Screen is average and charging is slow but it gets the job done.', sentiment: 'NEUTRAL', confidence: 81.3 },
     { date: '2010-12-01', rating: 5, text: 'Best purchase I have made. Speed is unmatched and the display is crisp.', sentiment: 'POSITIVE', confidence: 98.9 },
     { date: '2006-04-19', rating: 2, text: 'Battery dies fast. Software interface is confusing and feels very outdated.', sentiment: 'NEGATIVE', confidence: 96.8 },
   ],

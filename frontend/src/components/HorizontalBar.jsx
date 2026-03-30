@@ -1,11 +1,3 @@
-// ─── HORIZONTAL BAR ──────────────────────────────────────────────────────────
-// Props:
-//   label    - string
-//   value    - number
-//   max      - number  (used to calculate fill %)
-//   color    - hex
-//   subtitle - string (optional small text below bar)
-
 export default function HorizontalBar({ label, value, max, color = '#00d4aa', subtitle = '' }) {
   const pct = Math.min((value / max) * 100, 100);
 

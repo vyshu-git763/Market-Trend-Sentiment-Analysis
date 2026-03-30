@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 
 const NAV_ITEMS = [
+  { path: '/',            label: 'Upload',      icon: '⬆' },
   { path: '/dashboard',   label: 'Dashboard',   icon: '⬡' },
   { path: '/sentiment',   label: 'Sentiment',   icon: '◎' },
   { path: '/aspects',     label: 'Aspects',     icon: '◈' },
@@ -26,7 +27,7 @@ export default function Navbar() {
       gap:            32,
       height:         60,
     }}>
-      {/* Logo */}
+
       <Link to="/dashboard" style={{ textDecoration: 'none' }}>
         <div style={{
           fontFamily:    "'DM Mono', monospace",
@@ -40,7 +41,6 @@ export default function Navbar() {
         </div>
       </Link>
 
-      {/* Nav items */}
       <div style={{ flex: 1, display: 'flex', gap: 4 }}>
         {NAV_ITEMS.map(item => {
           const active = pathname === item.path;
@@ -67,7 +67,7 @@ export default function Navbar() {
         })}
       </div>
 
-      {/* Live indicator */}
+      {/* Live indicator
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <div style={{
           width:     8,
@@ -79,7 +79,7 @@ export default function Navbar() {
         <span style={{ color: '#5a6475', fontSize: 11, fontFamily: "'DM Mono', monospace" }}>
           LIVE DATA
         </span>
-      </div>
+      </div> */}
     </nav>
   );
 }
